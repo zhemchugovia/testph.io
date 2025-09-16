@@ -57,4 +57,99 @@
     const micSelect = document.getElementById("micSelect");
     const recordBtn = document.getElementById("recordBtn");
     const playBtn = document.getElementById("playBtn");
-    co
+    const echoBtn = document.getElementById("echoBtn");
+    const player = document.getElementById("player");
+
+    // Получаем список микрофонов
+    async function loadMicList() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      micSelect.innerHTML = "";
+      devices.filter(d => d.kind === "audioinput").forEach((device, i) => {
+        const option = document.createElement("option");
+        option.value = device.deviceId;
+        option.text = device.label || `Микрофон ${i+1}`;
+        micSelect.appendChild(option);
+      });
+    }
+
+    // Подключаем выбранный микрофон
+    async function startMic(deviceId) {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+
+      currentStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: deviceId ? { exact: deviceId } : undefined }
+      });
+
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+
+      source = audioContext.createMediaStreamSource(currentStream);
+      analyser = audioContext.createAnalyser();
+      source.connect(analyser);
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+      drawLevel();
+
+      // Запись
+      mediaRecorder = new MediaRecorder(currentStream);
+      mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: "audio/webm" });
+        recordedChunks = [];
+        player.src = URL.createObjectURL(blob);
+        playBtn.disabled = false;
+        player.style.display = "block";
+      };
+
+      // Эхо
+      echoBtn.onclick = () => {
+        const delayNode = audioContext.createDelay(2.0);
+        delayNode.delayTime.value = 1.5;
+        source.connect(delayNode).connect(audioContext.destination);
+      };
+    }
+
+    // Индикатор уровня
+    function drawLevel() {
+      requestAnimationFrame(drawLevel);
+      if (!analyser) return;
+      analyser.getByteFrequencyData(dataArray);
+      let volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+      document.getElementById("level").style.width = Math.min(volume, 100) + "%";
+    }
+
+    // Запись
+    recordBtn.addEventListener("click", () => {
+      if (mediaRecorder.state === "inactive") {
+        recordedChunks = [];
+        mediaRecorder.start();
+        recordBtn.textContent = "⏹ Остановить запись";
+        playBtn.disabled = true;
+      } else {
+        mediaRecorder.stop();
+        recordBtn.textContent = "🎙 Начать запись";
+      }
+    });
+
+    playBtn.addEventListener("click", () => {
+      player.play();
+    });
+
+    // Событие выбора микрофона
+    micSelect.addEventListener("change", () => {
+      startMic(micSelect.value);
+    });
+
+    // Запрос разрешения и загрузка списка
+    (async () => {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      await loadMicList();
+      if (micSelect.value) {
+        startMic(micSelect.value);
+      }
+    })();
+  </script>
+</body>
+</html>
