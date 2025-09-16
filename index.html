@@ -48,7 +48,7 @@
       background: #333;
       border-radius: 15px;
       overflow: hidden;
-      margin-top: 20px;
+      margin: 20px auto;
     }
     #level {
       height: 100%;
@@ -75,8 +75,12 @@
 
   <!-- Экран для проверки микрофона -->
   <div id="micTest">
-    <h2>Говорите в микрофон 🎤</h2>
+    <h2>Тест микрофона 🎤</h2>
     <div id="bar"><div id="level"></div></div>
+    <button id="recordBtn">🎙 Начать запись</button>
+    <button id="playBtn" disabled>▶ Воспроизвести запись</button>
+    <button id="echoBtn">🔄 Эхо-тест (задержка 1-2 сек)</button>
+    <audio id="player" controls style="margin-top:15px; display:none;"></audio>
   </div>
 
   <!-- Кнопка назад -->
@@ -112,6 +116,11 @@
 
     // ================= МИКРОФОН ==================
     let audioContext, analyser, dataArray, source;
+    let mediaRecorder, recordedChunks = [];
+    const recordBtn = document.getElementById("recordBtn");
+    const playBtn = document.getElementById("playBtn");
+    const echoBtn = document.getElementById("echoBtn");
+    const player = document.getElementById("player");
 
     btnMic.addEventListener("click", async () => {
       document.querySelector("h1").style.display = "none";
@@ -128,6 +137,24 @@
         source.connect(analyser);
         dataArray = new Uint8Array(analyser.frequencyBinCount);
         drawMicLevel();
+
+        // Подготовка записи
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: "audio/webm" });
+          recordedChunks = [];
+          player.src = URL.createObjectURL(blob);
+          playBtn.disabled = false;
+          player.style.display = "block";
+        };
+
+        // Эхо-тест (реалтайм задержка)
+        echoBtn.onclick = () => {
+          const delayNode = audioContext.createDelay(2.0);
+          delayNode.delayTime.value = 1.5; // задержка ~1.5 сек
+          source.connect(delayNode).connect(audioContext.destination);
+        };
       }
     });
 
@@ -137,6 +164,24 @@
       let volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
       document.getElementById("level").style.width = Math.min(volume, 100) + "%";
     }
+
+    // Запись
+    recordBtn.addEventListener("click", () => {
+      if (mediaRecorder.state === "inactive") {
+        recordedChunks = [];
+        mediaRecorder.start();
+        recordBtn.textContent = "⏹ Остановить запись";
+        playBtn.disabled = true;
+      } else {
+        mediaRecorder.stop();
+        recordBtn.textContent = "🎙 Начать запись";
+      }
+    });
+
+    // Воспроизведение записи
+    playBtn.addEventListener("click", () => {
+      player.play();
+    });
 
     // ================= НАЗАД ==================
     back.addEventListener("click", () => {
