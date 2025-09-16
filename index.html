@@ -1,344 +1,62 @@
 <!DOCTYPE html>
 <html lang="ru">
-import React { useEffect, useRef, useState } from "react";
-// Простая SPA для тестирования мобильных устройств.
-// - Использует Web APIs: getUserMedia, MediaRecorder, AudioContext, Pointer/Touch events,
-//   AmbientLightSensor/ProximitySensor (при наличии).
-// - Требует HTTPS и разрешений для камеры/микрофона/датчиков.
-// - Некоторые проверки (кнопки питания, детекция аппаратных дефектов экрана) невозможны в браузере.
-export default function MobileHardwareTester() {
-const [devices, setDevices] = useState({ cams: [], mics: [], sinks: [] });
-const [log, setLog] = useState([]);
-const logRef = useRef(log);
-logRef.current = log;
-// Camera
-const videoRef = useRef(null);
-const [videoStream, setVideoStream] = useState(null);
-const [selectedCam, setSelectedCam] = useState("");
-// Microphone
-const [selectedMic, setSelectedMic] = useState("");
-const [recorder, setRecorder] = useState(null);
-const [recordedUrl, setRecordedUrl] = useState(null);
-// Speaker test
-const audioRef = useRef(null);
-const [sinkId, setSinkId] = useState("");
-// Sensors
-const [ambientLux, setAmbientLux] = useState(null);
-const [proximity, setProximity] = useState(null);
-// Touch test state
-const [touchPoints, setTouchPoints] = useState([]);
-function addLog(msg) {
-const time = new Date().toLocaleTimeString();
-setLog((l) => [...l, ${time} — ${msg}]);
-}
-useEffect(() => {
-// enumerate devices
-async function fetchDevices() {
-try {
-const list = await navigator.mediaDevices.enumerateDevices();
-const cams = list.filter((d) => d.kind === "videoinput");
-const mics = list.filter((d) => d.kind === "audioinput");
-const sinks = list.filter((d) => d.kind === "audiooutput");
-setDevices({ cams, mics, sinks });
-if (cams[0]) setSelectedCam(cams[0].deviceId);
-if (mics[0]) setSelectedMic(mics[0].deviceId);
-if (sinks[0]) setSinkId(sinks[0].deviceId);
-addLog(Found devices: ${cams.length} cameras, ${mics.length} mics, ${sinks.length} sinks);
-} catch (e) {
-addLog("enumerateDevices error: " + e.message);
-}
-}
-fetchDevices();
-// Ambient light sensor (if available)
-try {
-  if ('AmbientLightSensor' in window) {
-    // @ts-ignore
-    const sensor = new AmbientLightSensor();
-    sensor.addEventListener('reading', () => {
-      // @ts-ignore
-      setAmbientLux(sensor.illuminance);
-      // @ts-ignore
-      addLog('AmbientLightSensor reading: ' + sensor.illuminance + ' lx');
+<head>
+  <meta charset="UTF-8">
+  <title>Проверка дисплея на битые пиксели</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: black;
+      color: white;
+      font-family: sans-serif;
+      user-select: none;
+    }
+    #screen {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    #btn {
+      position: absolute;
+      bottom: 20px;
+      padding: 10px 20px;
+      font-size: 18px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      background: rgba(255,255,255,0.2);
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div id="screen"></div>
+  <button id="btn">Следующий цвет</button>
+
+  <script>
+    const colors = ["red", "green", "blue", "white", "black", "yellow", "cyan", "magenta"];
+    let index = 0;
+
+    const screen = document.getElementById("screen");
+    const btn = document.getElementById("btn");
+
+    function setColor() {
+      screen.style.background = colors[index];
+    }
+
+    btn.addEventListener("click", () => {
+      index = (index + 1) % colors.length;
+      setColor();
     });
-    sensor.addEventListener('error', (e) => addLog('AmbientLightSensor error'));
-    sensor.start();
-  } else if ('ondevicelight' in window) {
-    // old API
-    window.addEventListener('devicelight', (e) => {
-      // @ts-ignore
-      setAmbientLux(e.value);
-      addLog('devicelight: ' + e.value);
-    });
-  } else {
-    addLog('Ambient light sensor not supported in this browser');
-  }
-} catch (e) {
-  addLog('Ambient light sensor init failed: ' + e.message);
-}
 
-// Proximity sensor
-try {
-  if ('ProximitySensor' in window) {
-    // @ts-ignore
-    const p = new ProximitySensor();
-    p.addEventListener('reading', () => {
-      // @ts-ignore
-      setProximity(p.distance);
-      // @ts-ignore
-      addLog('Proximity reading: ' + p.distance);
-    });
-    p.start();
-  } else if ('ondeviceproximity' in window) {
-    window.addEventListener('deviceproximity', (e) => {
-      // @ts-ignore
-      setProximity(e.value);
-      addLog('deviceproximity: ' + e.value);
-    });
-  } else {
-    addLog('Proximity sensor not supported in this browser');
-  }
-} catch (e) {
-  addLog('Proximity sensor init failed: ' + e.message);
-}
-
-// key/button listener
-function onKey(e) {
-  addLog(`Key event: key=${e.key} code=${e.code} which=${e.which}`);
-}
-window.addEventListener('keydown', onKey);
-return () => window.removeEventListener('keydown', onKey);
-
-}, []);
-// Start camera with selected device
-async function startCamera() {
-try {
-if (videoStream) {
-videoStream.getTracks().forEach((t) => t.stop());
-setVideoStream(null);
-}
-const s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: selectedCam ? { exact: selectedCam } : undefined } });
-setVideoStream(s);
-if (videoRef.current) videoRef.current.srcObject = s;
-addLog('Camera started');
-} catch (e) {
-addLog('Camera error: ' + e.message);
-}
-}
-async function stopCamera() {
-if (videoStream) {
-videoStream.getTracks().forEach((t) => t.stop());
-setVideoStream(null);
-if (videoRef.current) videoRef.current.srcObject = null;
-addLog('Camera stopped');
-}
-}
-// Snapshot
-function takeSnapshot() {
-if (!videoRef.current) return;
-const v = videoRef.current;
-const c = document.createElement('canvas');
-c.width = v.videoWidth;
-c.height = v.videoHeight;
-const ctx = c.getContext('2d');
-ctx.drawImage(v, 0, 0);
-const data = c.toDataURL('image/png');
-const w = window.open('about:blank');
-w.document.write(<img src="${data}" alt="snapshot">);
-addLog('Snapshot taken');
-}
-// Microphone recording
-async function startRecording() {
-try {
-const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: selectedMic ? { exact: selectedMic } : undefined } });
-const mr = new MediaRecorder(stream);
-const chunks = [];
-mr.ondataavailable = (e) => chunks.push(e.data);
-mr.onstop = () => {
-const blob = new Blob(chunks, { type: 'audio/webm' });
-const url = URL.createObjectURL(blob);
-setRecordedUrl(url);
-addLog('Recording stopped, playback available');
-};
-mr.start();
-setRecorder({ mr, stream });
-addLog('Recording started');
-} catch (e) {
-addLog('Recording error: ' + e.message);
-}
-}
-function stopRecording() {
-if (recorder) {
-recorder.mr.stop();
-recorder.stream.getTracks().forEach((t) => t.stop());
-setRecorder(null);
-addLog('Stopping recorder');
-}
-}
-// Speaker test: generate a tone and attempt to pan left/right via stereo panner
-async function playTone(side = 'both') {
-try {
-const ctx = new (window.AudioContext || window.webkitAudioContext)();
-const o = ctx.createOscillator();
-const g = ctx.createGain();
-const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-o.type = 'sine';
-o.frequency.value = 440;
-o.connect(g);
-if (panner) {
-g.connect(panner);
-panner.connect(ctx.destination);
-if (side === 'left') panner.pan.value = -1;
-else if (side === 'right') panner.pan.value = 1;
-else panner.pan.value = 0;
-} else {
-g.connect(ctx.destination);
-}
-o.start();
-addLog('Playing tone: ' + side + ' (5s)');
-setTimeout(() => {
-o.stop();
-ctx.close();
-addLog('Tone finished');
-}, 5000);
-} catch (e) {
-addLog('playTone error: ' + e.message);
-}
-}
-// Display tests: full-screen color fills
-function openColorTest(color = '#ff0000') {
-const w = window.open('', '_blank');
-w.document.body.style.margin = '0';
-w.document.body.style.background = color;
-w.document.body.style.height = '100vh';
-w.document.title = 'Color test';
-addLog('Opened color test: ' + color);
-}
-// Touch area handlers
-function onTouchStart(e) {
-const points = Array.from(e.touches || e.targetTouches).map((t) => ({ id: t.identifier, x: t.clientX, y: t.clientY }));
-setTouchPoints(points);
-addLog('touchstart: ' + JSON.stringify(points));
-}
-function onTouchMove(e) {
-const points = Array.from(e.touches || e.targetTouches).map((t) => ({ id: t.identifier, x: t.clientX, y: t.clientY }));
-setTouchPoints(points);
-}
-function onTouchEnd(e) {
-setTouchPoints([]);
-addLog('touchend');
-}
-return (
-
-Mobile Hardware Tester
-Этот инструмент проводит набор тестов в браузере. Для корректной работы нужен HTTPS и разрешения на камеру/микрофон.
-  <section className="mb-6">
-    <h2 className="text-xl font-semibold">Display — тест экрана</h2>
-    <div className="flex gap-2 mt-2">
-      <button className="px-3 py-1 rounded border" onClick={() => openColorTest('#ff0000')}>Красный</button>
-      <button className="px-3 py-1 rounded border" onClick={() => openColorTest('#00ff00')}>Зелёный</button>
-      <button className="px-3 py-1 rounded border" onClick={() => openColorTest('#0000ff')}>Синий</button>
-      <button className="px-3 py-1 rounded border" onClick={() => openColorTest('#ffffff')}>Белый</button>
-      <button className="px-3 py-1 rounded border" onClick={() => openColorTest('#000000')}>Чёрный</button>
-    </div>
-    <p className="text-sm mt-2">Откроется новое окно полноцветного залития — проверь на наличие битых пикселей и цветовые артефакты.</p>
-  </section>
-
-  <section className="mb-6">
-    <h2 className="text-xl font-semibold">Touchscreen — проверка тачскрина</h2>
-    <div
-      className="border rounded h-56 flex items-center justify-center touch-none"
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-    >
-      <div>
-        <div>Коснитесь экрана: точки: {touchPoints.length}</div>
-        <ul className="mt-2 list-disc ml-5 text-sm">
-          {touchPoints.map((p) => (
-            <li key={p.id}>id {p.id}: x {Math.round(p.x)}, y {Math.round(p.y)}</li>
-          ))}
-        </ul>
-      </div>
-    </div>
-    <p className="text-sm mt-2">Проведите пальцем по всей площади для проверки мёртвых зон и мультитача.</p>
-  </section>
-
-  <section className="mb-6">
-    <h2 className="text-xl font-semibold">Speakers — тест динамиков</h2>
-    <div className="flex gap-2 mt-2">
-      <button className="px-3 py-1 rounded border" onClick={() => playTone('left')}>Тон — левый</button>
-      <button className="px-3 py-1 rounded border" onClick={() => playTone('right')}>Тон — правый</button>
-      <button className="px-3 py-1 rounded border" onClick={() => playTone('both')}>Тон — оба</button>
-    </div>
-    <p className="text-sm mt-2">Если устройство поддерживает setSinkId, можно выбирать выходное устройство. Проверь звук на каждом динамике по отдельности.</p>
-  </section>
-
-  <section className="mb-6">
-    <h2 className="text-xl font-semibold">Microphone — проверка микрофонов</h2>
-    <div className="mt-2">
-      <label className="block text-sm">Выбрать микрофон</label>
-      <select className="border p-1 rounded mt-1" value={selectedMic} onChange={(e) => setSelectedMic(e.target.value)}>
-        <option value="">-- по умолчанию --</option>
-        {devices.mics.map((m) => (
-          <option key={m.deviceId} value={m.deviceId}>{m.label || m.deviceId}</option>
-        ))}
-      </select>
-      <div className="flex gap-2 mt-2">
-        <button className="px-3 py-1 rounded border" onClick={startRecording} disabled={!!recorder}>Начать запись</button>
-        <button className="px-3 py-1 rounded border" onClick={stopRecording} disabled={!recorder}>Остановить</button>
-        {recordedUrl && <audio controls src={recordedUrl} className="ml-2" />}
-      </div>
-      <p className="text-sm mt-2">Запишите голос и прослушайте, проверьте каждый микрофон по очереди, выбирая разные устройства в списке.</p>
-    </div>
-  </section>
-
-  <section className="mb-6">
-    <h2 className="text-xl font-semibold">Camera — проверка камер</h2>
-    <div className="mt-2">
-      <label className="block text-sm">Выбрать камеру</label>
-      <select className="border p-1 rounded mt-1" value={selectedCam} onChange={(e) => setSelectedCam(e.target.value)}>
-        <option value="">-- по умолчанию --</option>
-        {devices.cams.map((c) => (
-          <option key={c.deviceId} value={c.deviceId}>{c.label || c.deviceId}</option>
-        ))}
-      </select>
-      <div className="mt-2 flex gap-2">
-        <button className="px-3 py-1 rounded border" onClick={startCamera}>Запустить камеру</button>
-        <button className="px-3 py-1 rounded border" onClick={stopCamera}>Остановить</button>
-        <button className="px-3 py-1 rounded border" onClick={takeSnapshot}>Сделать снимок</button>
-      </div>
-      <div className="mt-3">
-        <video ref={videoRef} autoPlay playsInline muted style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid #ddd' }} />
-      </div>
-      <p className="text-sm mt-2">Запусти каждую камеру, проверь автофокус, шумы и мёртвые пиксели.</p>
-    </div>
-  </section>
-
-  <section className="mb-6">
-    <h2 className="text-xl font-semibold">Sensors — датчики</h2>
-    <div className="mt-2">
-      <div>Ambient light: {ambientLux !== null ? ambientLux + ' lx' : 'n/a'}</div>
-      <div>Proximity: {proximity !== null ? String(proximity) : 'n/a'}</div>
-      <p className="text-sm mt-2">Браузеры поддерживают датчики не везде. Если они недоступны — рассмотрите нативное приложение.</p>
-    </div>
-  </section>
-
-  <section className="mb-6">
-    <h2 className="text-xl font-semibold">Buttons — кнопки телефона</h2>
-    <div className="mt-2">
-      <p className="text-sm">В браузере можно ловить некоторые клавиши (volume в виде key events не всегда доступен). Нажмите аппаратные кнопки и посмотри логи.</p>
-      <div className="mt-2 p-3 border rounded h-24 overflow-auto">
-        <strong>Logs</strong>
-        <ul className="list-disc ml-5 text-sm">
-          {log.map((l, i) => (<li key={i}>{l}</li>))}
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <footer className="mt-6 text-sm text-gray-600">Примечание: веб-страница ограничена возможностями браузера — для полного тестирования аппаратных компонентов (например, точной проверки всех микрофонов одновременно, тестирования разговорного/медиа динамика по ОТДЕЛЬНОМУ выводу или физической проверки кнопки питания) потребуется нативное приложение с системными разрешениями.</footer>
-</div>
-
-);
-}
+    // Запуск с первого цвета
+    setColor();
+  </script>
+</body>
 </html>
