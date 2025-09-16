@@ -2,235 +2,59 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Тестирование устройства</title>
+  <title>Тест микрофонов</title>
   <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
+    body {
       background: #111;
       color: white;
       font-family: sans-serif;
-      user-select: none;
       text-align: center;
     }
-    button, select {
+    select, button {
       margin: 10px;
-      padding: 12px 24px;
+      padding: 10px 20px;
       font-size: 16px;
       border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      background: rgba(255,255,255,0.15);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.2);
       color: white;
-      transition: 0.3s;
-    }
-    button:hover, select:hover {
-      background: rgba(255,255,255,0.3);
-    }
-    select {
-      min-width: 250px;
-    }
-    #screen {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%;
-      height: 100%;
-      display: none;
-    }
-    #micTest {
-      display: none;
     }
     #bar {
       width: 80%;
-      height: 30px;
+      height: 25px;
       background: #333;
-      border-radius: 15px;
-      overflow: hidden;
       margin: 20px auto;
+      border-radius: 12px;
+      overflow: hidden;
     }
     #level {
       height: 100%;
       width: 0%;
       background: lime;
     }
-    #back {
-      position: absolute;
-      top: 20px;
-      left: 20px;
-      padding: 8px 16px;
-      font-size: 16px;
-      display: none;
-    }
   </style>
 </head>
 <body>
-  <h1>Меню тестирования1</h1>
-  <button id="btnDisplay">Проверка дисплея</button>
-  <button id="btnMic">Проверка микрофона</button>
+  <h2>Выбор микрофона 🎤</h2>
+  <p>Разные микрофоны телефона могут отображаться по-разному (зависит от браузера)</p>
 
-  <!-- Экран для проверки дисплея -->
-  <div id="screen"></div>
+  <label for="micSelect">Выберите микрофон:</label><br>
+  <select id="micSelect"></select>
 
-  <!-- Экран для проверки микрофона -->
-  <div id="micTest">
-    <h2>Тест микрофона 🎤</h2>
-    <label for="micSelect">Выберите микрофон:</label><br>
-    <select id="micSelect"></select>
+  <div id="bar"><div id="level"></div></div>
 
-    <div id="bar"><div id="level"></div></div>
+  <button id="recordBtn">🎙 Начать запись</button>
+  <button id="playBtn" disabled>▶ Воспроизвести</button>
+  <button id="echoBtn">🔄 Эхо (задержка 1.5 сек)</button>
 
-    <button id="recordBtn">🎙 Начать запись</button>
-    <button id="playBtn" disabled>▶ Воспроизвести запись</button>
-    <button id="echoBtn">🔄 Эхо-тест (задержка 1-2 сек)</button>
-
-    <audio id="player" controls style="margin-top:15px; display:none;"></audio>
-  </div>
-
-  <!-- Кнопка назад -->
-  <button id="back">Назад</button>
+  <audio id="player" controls style="display:none; margin-top:15px;"></audio>
 
   <script>
-    // ================= ДИСПЛЕЙ ==================
-    const colors = ["red", "green", "blue", "white", "black", "yellow", "cyan", "magenta"];
-    let index = 0;
-
-    const screen = document.getElementById("screen");
-    const btnDisplay = document.getElementById("btnDisplay");
-    const btnMic = document.getElementById("btnMic");
-    const micTest = document.getElementById("micTest");
-    const back = document.getElementById("back");
-
-    btnDisplay.addEventListener("click", () => {
-      document.querySelector("h1").style.display = "none";
-      btnDisplay.style.display = "none";
-      btnMic.style.display = "none";
-      back.style.display = "block";
-      screen.style.display = "block";
-      index = 0;
-      screen.style.background = colors[index];
-
-      screen.addEventListener("click", nextColor);
-    });
-
-    function nextColor() {
-      index = (index + 1) % colors.length;
-      screen.style.background = colors[index];
-    }
-
-    // ================= МИКРОФОН ==================
     let audioContext, analyser, dataArray, source, mediaRecorder;
     let recordedChunks = [];
     let currentStream = null;
 
+    const micSelect = document.getElementById("micSelect");
     const recordBtn = document.getElementById("recordBtn");
     const playBtn = document.getElementById("playBtn");
-    const echoBtn = document.getElementById("echoBtn");
-    const player = document.getElementById("player");
-    const micSelect = document.getElementById("micSelect");
-
-    btnMic.addEventListener("click", async () => {
-      document.querySelector("h1").style.display = "none";
-      btnDisplay.style.display = "none";
-      btnMic.style.display = "none";
-      back.style.display = "block";
-      micTest.style.display = "block";
-
-      if (!audioContext) {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      }
-
-      // Получаем список микрофонов
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      micSelect.innerHTML = "";
-      devices.filter(d => d.kind === "audioinput").forEach((device, i) => {
-        const option = document.createElement("option");
-        option.value = device.deviceId;
-        option.text = device.label || `Микрофон ${i+1}`;
-        micSelect.appendChild(option);
-      });
-
-      // Подключаем первый по умолчанию
-      startMicTest(micSelect.value);
-
-      micSelect.onchange = () => {
-        startMicTest(micSelect.value);
-      };
-    });
-
-    async function startMicTest(deviceId) {
-      if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId } });
-      currentStream = stream;
-
-      source = audioContext.createMediaStreamSource(stream);
-      analyser = audioContext.createAnalyser();
-      source.connect(analyser);
-      dataArray = new Uint8Array(analyser.frequencyBinCount);
-      drawMicLevel();
-
-      // Подготовка записи
-      mediaRecorder = new MediaRecorder(stream);
-      mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: "audio/webm" });
-        recordedChunks = [];
-        player.src = URL.createObjectURL(blob);
-        playBtn.disabled = false;
-        player.style.display = "block";
-      };
-
-      // Эхо-тест
-      echoBtn.onclick = () => {
-        const delayNode = audioContext.createDelay(2.0);
-        delayNode.delayTime.value = 1.5; // задержка ~1.5 сек
-        source.connect(delayNode).connect(audioContext.destination);
-      };
-    }
-
-    function drawMicLevel() {
-      requestAnimationFrame(drawMicLevel);
-      if (!analyser) return;
-      analyser.getByteFrequencyData(dataArray);
-      let volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
-      document.getElementById("level").style.width = Math.min(volume, 100) + "%";
-    }
-
-    // Запись
-    recordBtn.addEventListener("click", () => {
-      if (mediaRecorder.state === "inactive") {
-        recordedChunks = [];
-        mediaRecorder.start();
-        recordBtn.textContent = "⏹ Остановить запись";
-        playBtn.disabled = true;
-      } else {
-        mediaRecorder.stop();
-        recordBtn.textContent = "🎙 Начать запись";
-      }
-    });
-
-    // Воспроизведение записи
-    playBtn.addEventListener("click", () => {
-      player.play();
-    });
-
-    // ================= НАЗАД ==================
-    back.addEventListener("click", () => {
-      document.querySelector("h1").style.display = "block";
-      btnDisplay.style.display = "inline-block";
-      btnMic.style.display = "inline-block";
-      back.style.display = "none";
-      screen.style.display = "none";
-      micTest.style.display = "none";
-      screen.removeEventListener("click", nextColor);
-    });
-  </script>
-</body>
-</html>
+    co
